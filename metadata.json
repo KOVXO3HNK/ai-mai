@@ -1,0 +1,5 @@
+{
+  "name": "Handmade Product Description Generator",
+  "description": "An application that generates beautiful product descriptions in Russian for handmade items based on an uploaded photo. The user interface is inspired by ChatGPT.",
+  "requestFramePermissions": []
+}
