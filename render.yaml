@@ -3,7 +3,7 @@ services:
     name: handmade-description-generator
     env: static
     buildCommand: npm install && npm run build
-    publishDir: dist
+    staticPublishPath: dist
     envVars:
       - key: VITE_GEMINI_API_KEY
         sync: false
