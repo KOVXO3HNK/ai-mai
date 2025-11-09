@@ -1,20 +1,41 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Генератор описаний для Handmade-изделий
 
-# Run and deploy your AI Studio app
+Это веб-приложение помогает создавать красивые и продающие описания для изделий ручной работы на основе фотографии.
 
-This contains everything you need to run your app locally.
+## Развертывание на Render.com
 
-View your app in AI Studio: https://ai.studio/apps/drive/1onfqUqMpIo5T5WSEBP8N8blPDEiBPsti
+Из-за нестабильной работы парсера `render.yaml` на платформе Render, рекомендуется выполнить настройку проекта вручную. Это просто и займет всего несколько минут.
 
-## Run Locally
+**Пожалуйста, убедитесь, что вы удалили файл `render.yaml` из вашего репозитория перед началом.**
 
-**Prerequisites:**  Node.js
+### Пошаговая инструкция:
 
+1.  **Войдите в свой аккаунт на [Render](https://render.com/).**
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+2.  На главной панели (Dashboard) нажмите **New +** и выберите **Static Site**.
+
+3.  **Подключите ваш репозиторий GitHub:**
+    *   Найдите и выберите репозиторий `ai-mai`.
+    *   Нажмите **Connect**.
+
+4.  **Настройте параметры сборки:**
+    *   **Name**: `ai-mai` (или любое другое имя)
+    *   **Build Command**: `npm install && npm run build`
+    *   **Publish Directory**: `dist`
+
+5.  Нажмите кнопку **Create Static Site**. Render начнет первое развертывание, которое, скорее всего, завершится ошибкой, так как мы еще не добавили API ключ. Это нормально.
+
+6.  **Добавьте API ключ:**
+    *   Перейдите в панель управления вашего нового сервиса.
+    *   Слева выберите вкладку **Environment**.
+    *   Нажмите **Add Environment Variable**.
+    *   Введите следующие данные:
+        *   **Key**: `VITE_GEMINI_API_KEY`
+        *   **Value**: *вставьте сюда ваш ключ от Google Gemini API*
+    *   Нажмите **Save Changes**.
+
+7.  **Запустите развертывание заново:**
+    *   Перейдите на вкладку **Deploys**.
+    *   Нажмите **Deploy latest commit** или **Trigger Deploy** -> **Deploy**.
+
+После этого Render соберет ваш проект с ключом API, и через несколько минут ваше приложение будет доступно по публичной ссылке!

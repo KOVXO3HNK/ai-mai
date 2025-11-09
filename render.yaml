@@ -1,5 +1,0 @@
-services:
-  - type: static_site
-    name: ai-mai
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
