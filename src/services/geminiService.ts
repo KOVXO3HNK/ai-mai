@@ -1,3 +1,4 @@
+// FIX: Replaced placeholder content with the Gemini API service implementation.
 import { GoogleGenAI } from "@google/genai";
 
 const fileToGenerativePart = async (file: File) => {
@@ -16,7 +17,6 @@ const fileToGenerativePart = async (file: File) => {
 };
 
 export const generateDescription = async (imageFile: File, userText: string): Promise<string> => {
-  // FIX: Adhere to the API key guidelines by using process.env.API_KEY. This also resolves the TypeScript error.
   if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set.");
   }
