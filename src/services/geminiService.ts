@@ -1,56 +1,36 @@
-// FIX: Replaced placeholder content with the Gemini API service implementation.
-import { GoogleGenAI } from "@google/genai";
-
-const fileToGenerativePart = async (file: File) => {
-  const base64EncodedDataPromise = new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result.split(',')[1]);
-      }
-    };
-    reader.readAsDataURL(file);
-  });
-  return {
-    inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
-  };
-};
-
 export const generateDescription = async (imageFile: File, userText: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  if (!backendUrl) {
+    // This provides a helpful error during development if the .env file is missing.
+    if (import.meta.env.DEV) {
+       throw new Error("VITE_BACKEND_URL environment variable is not set. Please create a .env.local file and add VITE_BACKEND_URL=http://localhost:3001");
+    }
+    throw new Error("VITE_BACKEND_URL environment variable is not set.");
   }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  const imagePart = await fileToGenerativePart(imageFile);
-
-  const finalPrompt = `
-Задание: Создай привлекательное и подробное товарное описание на русском языке для handmade-изделия, изображенного на фото.
-
-Стиль: Дружелюбный, теплый, подчеркивающий уникальность и ценность ручной работы.
-
-Структура описания:
-1.  **Яркий заголовок:** Придумай запоминающееся название для товара.
-2.  **Введение:** Кратко опиши изделие и эмоции, которые оно вызывает.
-3.  **Детали и материалы:** Расскажи о материалах, из которых сделано изделие (если их можно определить по фото), о техниках, которые могли быть использованы. Обрати внимание на мелкие детали.
-4.  **Идеальный подарок/применение:** Подскажи, для кого или для какого случая это изделие станет идеальным подарком или как его можно использовать.
-5.  **Завершение:** Заверши описание теплым призывом к покупке или упоминанием о душе, вложенной в работу.
-
-Дополнительная информация от пользователя: "${userText || 'Нет'}"
-
-Сгенерируй только текст описания, без лишних вступлений вроде "Конечно, вот описание:". Ответ должен быть хорошо отформатирован с использованием абзацев.
-`;
-  
-  const contents = { parts: [imagePart, { text: finalPrompt }] };
+  const formData = new FormData();
+  formData.append('image', imageFile);
+  formData.append('userText', userText);
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents,
+    const response = await fetch(`${backendUrl}/generate`, {
+      method: 'POST',
+      body: formData,
     });
-    return response.text;
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: `Request failed with status ${response.status}` }));
+      throw new Error(errorData.error || `Request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.description;
   } catch (error) {
-    console.error("Error generating description with Gemini API:", error);
-    throw new Error("Не удалось сгенерировать описание. Пожалуйста, попробуйте еще раз.");
+    console.error("Error communicating with the backend:", error);
+    if (error instanceof Error) {
+        // Re-throw the specific error message from the backend if available
+        throw new Error(error.message || "Не удалось связаться с сервером. Пожалуйста, попробуйте еще раз.");
+    }
+    throw new Error("Не удалось связаться с сервером. Пожалуйста, попробуйте еще раз.");
   }
 };
