@@ -1,9 +1,5 @@
 services:
   - type: static_site
-    name: handmade-description-generator
-    env: static
+    name: ai-mai
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    envVars:
-      - key: VITE_GEMINI_API_KEY
-        sync: false
