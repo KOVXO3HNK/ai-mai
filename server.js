@@ -10,6 +10,9 @@ const app = express();
 // Render sets the PORT environment variable.
 const port = process.env.PORT || 3001;
 
+// In-memory storage for paid users (in production, use a database)
+const paidUsers = new Set();
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -22,6 +25,134 @@ if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable is not set.");
 }
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Telegram Bot Token for payment verification (optional, for webhook support)
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+// Payment status endpoint
+app.get('/payment/status', (req, res) => {
+  const { userId } = req.query;
+  
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  const isPaid = paidUsers.has(String(userId));
+  res.json({ isPaid });
+});
+
+// Create invoice endpoint
+app.post('/payment/create-invoice', async (req, res) => {
+  const { userId, amount } = req.body;
+
+  if (!userId || !amount) {
+    return res.status(400).json({ error: 'userId and amount are required' });
+  }
+
+  if (!TELEGRAM_BOT_TOKEN) {
+    // For development/testing without actual Telegram integration
+    // Mark user as paid immediately (demo mode)
+    paidUsers.add(String(userId));
+    return res.json({ 
+      invoiceLink: `https://t.me/$pay?slug=demo_${userId}_${Date.now()}`,
+      demoMode: true 
+    });
+  }
+
+  try {
+    // Create invoice using Telegram Bot API
+    const invoicePayload = {
+      title: 'Доступ к генератору описаний',
+      description: 'Неограниченный доступ к AI-генератору описаний для handmade-изделий',
+      payload: JSON.stringify({ userId: String(userId), timestamp: Date.now() }),
+      currency: 'XTR', // Telegram Stars currency code
+      prices: [{ label: 'Доступ к боту', amount: amount }],
+    };
+
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createInvoiceLink`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(invoicePayload),
+    });
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      console.error('Telegram API error:', data);
+      throw new Error(data.description || 'Failed to create invoice');
+    }
+
+    res.json({ invoiceLink: data.result });
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    res.status(500).json({ error: 'Не удалось создать счёт для оплаты' });
+  }
+});
+
+// Webhook endpoint for Telegram payment updates
+app.post('/payment/webhook', (req, res) => {
+  const update = req.body;
+
+  // Handle pre-checkout query (required to approve payment)
+  if (update.pre_checkout_query) {
+    const preCheckoutQueryId = update.pre_checkout_query.id;
+    
+    // Answer pre-checkout query to approve the payment
+    if (TELEGRAM_BOT_TOKEN) {
+      fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerPreCheckoutQuery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pre_checkout_query_id: preCheckoutQueryId,
+          ok: true,
+        }),
+      }).catch(err => console.error('Error answering pre-checkout query:', err));
+    }
+
+    return res.json({ ok: true });
+  }
+
+  // Handle successful payment
+  if (update.message?.successful_payment) {
+    try {
+      const paymentInfo = update.message.successful_payment;
+      const payload = JSON.parse(paymentInfo.invoice_payload);
+      const userId = payload.userId;
+      
+      if (userId) {
+        paidUsers.add(String(userId));
+        console.log(`Payment successful for user ${userId}`);
+      }
+    } catch (err) {
+      console.error('Error processing payment webhook:', err);
+    }
+
+    return res.json({ ok: true });
+  }
+
+  res.json({ ok: true });
+});
+
+// Manual payment confirmation endpoint (for testing or admin use)
+app.post('/payment/confirm', (req, res) => {
+  const { userId, adminKey } = req.body;
+
+  // Simple admin key check (in production, use proper authentication)
+  if (adminKey !== process.env.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  paidUsers.add(String(userId));
+  res.json({ success: true, message: `User ${userId} marked as paid` });
+});
 
 
 app.post('/generate', upload.single('image'), async (req, res) => {
