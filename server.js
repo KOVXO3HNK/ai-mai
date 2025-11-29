@@ -10,8 +10,13 @@ const app = express();
 // Render sets the PORT environment variable.
 const port = process.env.PORT || 3001;
 
-// In-memory storage for paid users (in production, use a database)
+// In-memory storage for paid users
+// NOTE: In production, use a persistent database (PostgreSQL, Redis, etc.)
+// This in-memory storage will lose data on server restart
 const paidUsers = new Set();
+
+// Check if running in development mode
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
 // Middleware
 app.use(cors());
@@ -50,13 +55,19 @@ app.post('/payment/create-invoice', async (req, res) => {
   }
 
   if (!TELEGRAM_BOT_TOKEN) {
-    // For development/testing without actual Telegram integration
-    // Mark user as paid immediately (demo mode)
-    paidUsers.add(String(userId));
-    return res.json({ 
-      invoiceLink: `https://t.me/$pay?slug=demo_${userId}_${Date.now()}`,
-      demoMode: true 
-    });
+    // Demo mode - only available in development
+    if (isDevelopment) {
+      console.warn('Development mode: Creating demo invoice (TELEGRAM_BOT_TOKEN not set)');
+      paidUsers.add(String(userId));
+      return res.json({ 
+        invoiceLink: `https://t.me/$pay?slug=demo_${userId}_${Date.now()}`,
+        demoMode: true 
+      });
+    } else {
+      return res.status(503).json({ 
+        error: 'Payment service not configured. Please set TELEGRAM_BOT_TOKEN.' 
+      });
+    }
   }
 
   try {
@@ -137,20 +148,25 @@ app.post('/payment/webhook', (req, res) => {
   res.json({ ok: true });
 });
 
-// Manual payment confirmation endpoint (for testing or admin use)
+// Manual payment confirmation endpoint (for development/testing only)
 app.post('/payment/confirm', (req, res) => {
-  const { userId, adminKey } = req.body;
-
-  // Simple admin key check (in production, use proper authentication)
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(403).json({ error: 'Unauthorized' });
+  // Only allow in development mode or with proper admin authentication
+  if (!isDevelopment) {
+    const { adminKey } = req.body;
+    // Simple admin key check - in production, use proper authentication (JWT, OAuth, etc.)
+    if (!process.env.ADMIN_KEY || adminKey !== process.env.ADMIN_KEY) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
   }
+
+  const { userId } = req.body;
 
   if (!userId) {
     return res.status(400).json({ error: 'userId is required' });
   }
 
   paidUsers.add(String(userId));
+  console.log(`Manual payment confirmation for user ${userId}`);
   res.json({ success: true, message: `User ${userId} marked as paid` });
 });
 

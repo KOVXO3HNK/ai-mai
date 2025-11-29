@@ -77,10 +77,19 @@ export const PaymentProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (telegramUserId) {
       checkPaymentStatus();
     } else {
-      // If no Telegram user (e.g., testing in browser), allow access
+      // If no Telegram user, check if we're in development mode
       const webApp = getTelegramWebApp();
       if (!webApp) {
-        setIsPaid(true);
+        // Only allow bypass in development mode
+        const isDevelopment = import.meta.env.DEV;
+        if (isDevelopment) {
+          console.warn('Development mode: Bypassing payment check (no Telegram WebApp)');
+          setIsPaid(true);
+        } else {
+          // In production, require Telegram WebApp
+          setError('Приложение доступно только через Telegram');
+          setIsPaid(false);
+        }
         setIsLoading(false);
       }
     }
