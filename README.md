@@ -38,17 +38,18 @@
 
 #### 2. Настройка Backend
 
-Добавьте следующие переменные окружения на Render (или другой хостинг):
+Создайте `.env` файл (используйте `.env.example` как шаблон) и добавьте следующие переменные окружения на Render (или другой хостинг):
 
 ```env
 API_KEY=<your_google_genai_api_key>
 TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
+TELEGRAM_WEBHOOK_SECRET=<your_random_webhook_secret>  # Рекомендуется для безопасности
 PORT=3001
 ```
 
 #### 3. Настройка Frontend
 
-Добавьте переменную окружения:
+Создайте `.env.local` файл (используйте `.env.example.frontend` как шаблон) и добавьте переменную окружения:
 
 ```env
 VITE_BACKEND_URL=https://ai-mai-backend.onrender.com
