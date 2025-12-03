@@ -26,22 +26,38 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Check for Telegram Bot Token
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+
 if (!TELEGRAM_BOT_TOKEN) {
   console.warn("TELEGRAM_BOT_TOKEN is not set. Payment features will not work.");
 }
 
-// In-memory storage for paid users (in production, use a database)
+// WARNING: In-memory storage for paid users - NOT suitable for production!
+// Data will be lost on server restart, causing users to lose access after payment.
+// TODO: Replace with a persistent database (PostgreSQL, MongoDB, etc.) before production deployment.
 const paidUsers = new Set();
 
 // Helper function to validate Telegram init data
 function validateTelegramInitData(initData) {
   if (!TELEGRAM_BOT_TOKEN) {
+    console.error('TELEGRAM_BOT_TOKEN not configured');
+    return false;
+  }
+
+  if (!initData) {
+    console.error('initData is empty');
     return false;
   }
 
   try {
     const urlParams = new URLSearchParams(initData);
     const hash = urlParams.get('hash');
+    
+    if (!hash) {
+      console.error('No hash in initData');
+      return false;
+    }
+    
     urlParams.delete('hash');
     
     const dataCheckString = Array.from(urlParams.entries())
@@ -161,8 +177,20 @@ app.post('/check-payment-status', async (req, res) => {
 });
 
 // Webhook endpoint for Telegram payment notifications
+// IMPORTANT: For production, set up webhook secret token verification
+// Set webhook with: curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" 
+//                       -d "url=YOUR_URL&secret_token=YOUR_SECRET"
 app.post('/telegram-webhook', express.json(), async (req, res) => {
   try {
+    // Verify webhook secret token if configured
+    if (TELEGRAM_WEBHOOK_SECRET) {
+      const secretToken = req.headers['x-telegram-bot-api-secret-token'];
+      if (secretToken !== TELEGRAM_WEBHOOK_SECRET) {
+        console.error('Invalid webhook secret token');
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
+
     const update = req.body;
 
     // Handle successful payment
@@ -192,6 +220,8 @@ app.post('/telegram-webhook', express.json(), async (req, res) => {
         // Add user to paid users
         paidUsers.add(userId);
         console.log(`User ${userId} has paid successfully`);
+      } else {
+        console.error(`User ID mismatch: ${userId} vs ${payloadUserId}`);
       }
     }
 
