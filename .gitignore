@@ -1,1 +1,5 @@
-~�er��z{l��ؠ���
+node_modules
+dist
+.env
+.env.local
+package-lock.json
