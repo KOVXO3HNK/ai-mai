@@ -3,6 +3,7 @@ import multer from 'multer';
 import cors from 'cors';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -22,6 +23,184 @@ if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable is not set.");
 }
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Check for Telegram Bot Token
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!TELEGRAM_BOT_TOKEN) {
+  console.warn("TELEGRAM_BOT_TOKEN is not set. Payment features will not work.");
+}
+
+// In-memory storage for paid users (in production, use a database)
+const paidUsers = new Set();
+
+// Helper function to validate Telegram init data
+function validateTelegramInitData(initData) {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return false;
+  }
+
+  try {
+    const urlParams = new URLSearchParams(initData);
+    const hash = urlParams.get('hash');
+    urlParams.delete('hash');
+    
+    const dataCheckString = Array.from(urlParams.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    
+    const secretKey = crypto.createHmac('sha256', 'WebAppData')
+      .update(TELEGRAM_BOT_TOKEN)
+      .digest();
+    
+    const calculatedHash = crypto.createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+    
+    return calculatedHash === hash;
+  } catch (error) {
+    console.error('Error validating init data:', error);
+    return false;
+  }
+}
+
+// Endpoint to create invoice
+app.post('/create-invoice', async (req, res) => {
+  try {
+    const { userId, initData } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    // Validate init data
+    if (!validateTelegramInitData(initData)) {
+      return res.status(401).json({ error: 'Invalid Telegram data' });
+    }
+
+    if (!TELEGRAM_BOT_TOKEN) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+
+    // Create invoice using Telegram Bot API
+    const invoicePayload = {
+      title: 'Премиум доступ к генератору описаний',
+      description: 'Неограниченная генерация описаний для handmade изделий',
+      payload: `user_${userId}`,
+      currency: 'XTR', // Telegram Stars currency code
+      prices: [{ label: 'Премиум доступ', amount: 100 }], // 100 Stars
+    };
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/createInvoiceLink`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoicePayload),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      console.error('Telegram API error:', data);
+      return res.status(500).json({ error: 'Failed to create invoice' });
+    }
+
+    res.json({ invoiceLink: data.result });
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    res.status(500).json({ error: 'Failed to create invoice' });
+  }
+});
+
+// Endpoint to verify payment
+app.post('/verify-payment', async (req, res) => {
+  try {
+    const { userId, initData } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    // Validate init data
+    if (!validateTelegramInitData(initData)) {
+      return res.status(401).json({ error: 'Invalid Telegram data' });
+    }
+
+    // Check if user has paid (in memory for now)
+    const hasPaid = paidUsers.has(userId);
+    res.json({ hasPaid });
+  } catch (error) {
+    console.error('Error verifying payment:', error);
+    res.status(500).json({ error: 'Failed to verify payment' });
+  }
+});
+
+// Endpoint to check payment status
+app.post('/check-payment-status', async (req, res) => {
+  try {
+    const { userId, initData } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    // Validate init data
+    if (!validateTelegramInitData(initData)) {
+      return res.status(401).json({ error: 'Invalid Telegram data' });
+    }
+
+    // Check if user has paid
+    const hasPaid = paidUsers.has(userId);
+    res.json({ hasPaid });
+  } catch (error) {
+    console.error('Error checking payment status:', error);
+    res.status(500).json({ error: 'Failed to check payment status' });
+  }
+});
+
+// Webhook endpoint for Telegram payment notifications
+app.post('/telegram-webhook', express.json(), async (req, res) => {
+  try {
+    const update = req.body;
+
+    // Handle successful payment
+    if (update.pre_checkout_query) {
+      const { id } = update.pre_checkout_query;
+      
+      // Answer pre-checkout query
+      await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerPreCheckoutQuery`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pre_checkout_query_id: id, ok: true }),
+        }
+      );
+    }
+
+    // Handle successful payment completion
+    if (update.message?.successful_payment) {
+      const userId = update.message.from.id;
+      const payload = update.message.successful_payment.invoice_payload;
+      
+      // Extract user ID from payload
+      const payloadUserId = payload.replace('user_', '');
+      
+      if (String(userId) === String(payloadUserId)) {
+        // Add user to paid users
+        paidUsers.add(userId);
+        console.log(`User ${userId} has paid successfully`);
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error handling webhook:', error);
+    res.status(500).json({ error: 'Webhook error' });
+  }
+});
 
 
 app.post('/generate', upload.single('image'), async (req, res) => {
